@@ -1,0 +1,19 @@
+---
+title: "Weight Lifting Machine Learning Study"
+author: "Yisong Li"
+date: "Thursday, April 23, 2015"
+output: html_document
+---
+
+
+
+```{r}
+summary(cars)
+```
+
+
+
+```{r, echo=FALSE}
+plot(cars)
+```
+
