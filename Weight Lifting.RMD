@@ -4,16 +4,54 @@ author: "Yisong Li"
 date: "Thursday, April 23, 2015"
 output: html_document
 ---
+# Summary
 
 
+# Analysis
+
+## Load in the libraries
+```{r}
+suppressMessages(library(caret))
+library(randomForest)
+```
+
+## Read the data
 
 ```{r}
-summary(cars)
+training <- read.csv("./data/pml-training.csv", na.strings = c("NA", ""))
+training$X <- NULL
+testing <- read.csv("./data/pml-testing.csv", na.strings = c("NA", ""))
+testing$X <- NULL
+levels(testing$new_window) <- c("no","yes")
 ```
 
+## Clean the data
 
+Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm.I decided to throw out the variables that have more than 95% NA values
 
-```{r, echo=FALSE}
-plot(cars)
+```{r}
+naPercent <- apply(training, 2, function(x) sum(is.na(x))/length(x))
+filter <- naPercent < 0.95
+wktrain <- training[,filter]
+```
+## Methodology
+Random Forest
+
+Select predictors
+
+```{r}
+wktrain <- wktrain[,5:59]
+set.seed(525123)
+modFit <- randomForest(classe~.,data = wktrain)
+modFit
 ```
 
+## Validation
+```{r}
+testing <- testing[,filter]
+testing <- testing[,5:59]
+pred <- predict(modFit, testing)
+pred
+```
+
+# Conclusion
