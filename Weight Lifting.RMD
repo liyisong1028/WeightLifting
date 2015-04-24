@@ -10,14 +10,29 @@ output: html_document
 # Analysis
 
 ## Load in the libraries
+
 ```{r}
+if (!"caret" %in% (installed.packages())) {
+        install.packages("caret")
+}
 suppressMessages(library(caret))
+
+if (!"randomForest" %in% (installed.packages())) {
+        install.packages("randomForest")
+}
 library(randomForest)
+
+if (!"doParallel" %in% (installed.packages())) {
+        install.packages("doParallel")
+}
+suppressMessages(library(doParallel))
 ```
 
 ## Read the data
 
-```{r}
+Download the training dataset and testing dataset to the new data folder created in the working directory. Read in the data, and make sure all the variables in both the training set and testing set have the same classes.
+
+```{r Read, cache=TRUE}
 training <- read.csv("./data/pml-training.csv", na.strings = c("NA", ""))
 training$X <- NULL
 testing <- read.csv("./data/pml-testing.csv", na.strings = c("NA", ""))
@@ -25,29 +40,58 @@ testing$X <- NULL
 levels(testing$new_window) <- c("no","yes")
 ```
 
-## Clean the data
+## Prepare the data
 
-Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm.I decided to throw out the variables that have more than 95% NA values
+Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm. I decided to throw out the variables that have more than 95% NA values.
 
-```{r}
+```{r Clean, cache=TRUE}
 naPercent <- apply(training, 2, function(x) sum(is.na(x))/length(x))
 filter <- naPercent < 0.95
 wktrain <- training[,filter]
 ```
+
 ## Methodology
-Random Forest
 
-Select predictors
+The objective of this study is build a predictive model to classify the weight lifting action by quality. Since this is more likely to be a nonlinear setting, decision tree methods would have better performance. In order to decrease the level of overfitting and increase accuracy, I decide to use random forest method in the caret package, which adopts the bootstraps and will automatically perform cross validation. 
 
-```{r}
+However, The random forest method in the caret package also requires a tremendous amount of running time on personal computers. In order to decrease the running time, I lower the number of trees generated each time from default value of 500 to 200, and I use the `doParallel` package to utilize the parallel processors. This calculation will also require a substantial memories, which may create problems in the reproducing process.
+
+The current training dataset includes the variables such as the user names and timestamps, which should have nothing to do with the action quality. In order to classify the quality levels using the measurable data, I excluded them from the predictors. For reproductive purpose, I set the seed at 525123.
+
+```{r MLA, cache=TRUE}
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
 wktrain <- wktrain[,5:59]
 set.seed(525123)
-modFit <- randomForest(classe~.,data = wktrain)
+modFit <- train(classe ~., data=wktrain, method="rf", ntree=300, proxy=T)
+## modFit <- randomForest(classe~., data = wktrain)
+```
+
+## Final Model
+
+```{r}
 modFit
 ```
 
-## Validation
 ```{r}
+modFit$finalModel
+head(getTree(modFit$finalModel,k=2))
+```
+
+```{r}
+varImp(modFit)
+## wlc <- classCenter(wktrain[, c("num_window", "roll_belt")], wktrain$classe, modFit$finalModel$prox)
+## wlc <- as.data.frame(wlc)
+## wlc$classe <- rownames(wlc)
+## p <- qplot(num_window, roll_belt, col = classe, data = wktrain)
+## p + geom_point(aes(x=num_window, y = roll_belt, col = classe, size = 5, shape = 4, data = wlc))
+```
+
+## Test the model
+
+Apply the predictive model on the test dataset, and the results match the real classification at 100% according to the submission part of the project. However, since the test dataset only contains 20 observations, this can't really assess the out of sample error rate of this predictive model, which is estimated at 0.15%. It will require further assessment in the future studies.
+
+```{r Test}
 testing <- testing[,filter]
 testing <- testing[,5:59]
 pred <- predict(modFit, testing)

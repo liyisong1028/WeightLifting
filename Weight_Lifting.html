@@ -74,42 +74,137 @@ img {
 <h1>Analysis</h1>
 <div id="load-in-the-libraries" class="section level2">
 <h2>Load in the libraries</h2>
-<pre class="r"><code>suppressMessages(library(caret))
+<pre class="r"><code>if (!&quot;caret&quot; %in% (installed.packages())) {
+        install.packages(&quot;caret&quot;)
+}
+suppressMessages(library(caret))
+
+if (!&quot;randomForest&quot; %in% (installed.packages())) {
+        install.packages(&quot;randomForest&quot;)
+}
 library(randomForest)</code></pre>
 <pre><code>## randomForest 4.6-10
 ## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre class="r"><code>if (!&quot;doParallel&quot; %in% (installed.packages())) {
+        install.packages(&quot;doParallel&quot;)
+}
+suppressMessages(library(doParallel))</code></pre>
 </div>
 <div id="read-the-data" class="section level2">
 <h2>Read the data</h2>
+<p>Download the training dataset and testing dataset to the new folder created in the working directory. Read in the data, and make sure all the variables in both the training set and testing set have the same classes.</p>
 <pre class="r"><code>training &lt;- read.csv(&quot;./data/pml-training.csv&quot;, na.strings = c(&quot;NA&quot;, &quot;&quot;))
 training$X &lt;- NULL
 testing &lt;- read.csv(&quot;./data/pml-testing.csv&quot;, na.strings = c(&quot;NA&quot;, &quot;&quot;))
 testing$X &lt;- NULL
 levels(testing$new_window) &lt;- c(&quot;no&quot;,&quot;yes&quot;)</code></pre>
 </div>
-<div id="clean-the-data" class="section level2">
-<h2>Clean the data</h2>
-<p>Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm.I decided to throw out the variables that have more than 95% NA values</p>
+<div id="prepare-the-data" class="section level2">
+<h2>Prepare the data</h2>
+<p>Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm. I decided to throw out the variables that have more than 95% NA values.</p>
 <pre class="r"><code>naPercent &lt;- apply(training, 2, function(x) sum(is.na(x))/length(x))
 filter &lt;- naPercent &lt; 0.95
 wktrain &lt;- training[,filter]</code></pre>
 </div>
 <div id="methodology" class="section level2">
 <h2>Methodology</h2>
-<p>Random Forest</p>
-<p>Select predictors</p>
-<pre class="r"><code>wktrain &lt;- wktrain[,5:59]
+<p>The objective of this study is build a predictive model to classify the weight lifting action by quality. Since this is more likely to be a nonlinear setting, decision tree methods would have better performance. In order to decrease the level of overfitting and increase accuracy, I decide to use random forest method in the caret package, which adopts the bootstraps and will automatically perform cross validation.</p>
+<p>However, The random forest method in the caret package also requires a tremendous amount of running time on personal computers. In order to decrease the running time, I lower the number of trees generated each time from default value of 500 to 200, and I use the <code>doParallel</code> package to utilize the parallel processors. This calculation will also require a substantial memories, which may create problems in the reproducing process.</p>
+<p>The current training dataset includes the variables such as the user names and timestamps, which should have nothing to do with the action quality. In order to classify the quality levels using the measurable data, I excluded them from the predictors. For reproductive purpose, I set the seed at 525123.</p>
+<pre class="r"><code>cl &lt;- makeCluster(detectCores())
+registerDoParallel(cl)
+wktrain &lt;- wktrain[,5:59]
 set.seed(525123)
-modFit &lt;- randomForest(classe~.,data = wktrain)</code></pre>
+modFit &lt;- train(classe ~., data=wktrain, method=&quot;rf&quot;, ntree=300, proxy=T)
+## modFit &lt;- randomForest(classe~., data = wktrain)</code></pre>
 </div>
-<div id="validation" class="section level2">
-<h2>Validation</h2>
+<div id="final-model" class="section level2">
+<h2>Final Model</h2>
+<pre class="r"><code>modFit</code></pre>
+<pre><code>## Random Forest 
+## 
+## 19622 samples
+##    54 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Bootstrapped (25 reps) 
+## 
+## Summary of sample sizes: 19622, 19622, 19622, 19622, 19622, 19622, ... 
+## 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy   Kappa      Accuracy SD   Kappa SD   
+##    2    0.9947686  0.9933814  0.0009524596  0.001208131
+##   28    0.9976121  0.9969792  0.0005927317  0.000750605
+##   54    0.9938021  0.9921584  0.0029984464  0.003796441
+## 
+## Accuracy was used to select the optimal model using  the largest value.
+## The final value used for the model was mtry = 28.</code></pre>
+<pre class="r"><code>modFit$finalModel</code></pre>
+<pre><code>## 
+## Call:
+##  randomForest(x = x, y = y, ntree = 300, mtry = param$mtry, proxy = ..2) 
+##                Type of random forest: classification
+##                      Number of trees: 300
+## No. of variables tried at each split: 28
+## 
+##         OOB estimate of  error rate: 0.16%
+## Confusion matrix:
+##      A    B    C    D    E  class.error
+## A 5578    2    0    0    0 0.0003584229
+## B    6 3788    2    1    0 0.0023702923
+## C    0    4 3418    0    0 0.0011689071
+## D    0    0   10 3204    2 0.0037313433
+## E    0    0    0    5 3602 0.0013861935</code></pre>
+<pre class="r"><code>head(getTree(modFit$finalModel,k=2))</code></pre>
+<pre><code>##   left daughter right daughter split var split point status prediction
+## 1             2              3        43      -26.65      1          0
+## 2             4              5        43      -34.15      1          0
+## 3             6              7         3      130.50      1          0
+## 4             8              9        35        0.37      1          0
+## 5            10             11         2      436.00      1          0
+## 6            12             13         5      169.50      1          0</code></pre>
+<pre class="r"><code>varImp(modFit)</code></pre>
+<pre><code>## rf variable importance
+## 
+##   only 20 most important variables shown (out of 54)
+## 
+##                      Overall
+## num_window           100.000
+## roll_belt             64.901
+## pitch_forearm         39.288
+## yaw_belt              32.095
+## magnet_dumbbell_z     28.909
+## magnet_dumbbell_y     28.816
+## pitch_belt            27.911
+## roll_forearm          24.647
+## accel_dumbbell_y      13.002
+## accel_forearm_x       11.130
+## magnet_dumbbell_x     10.711
+## roll_dumbbell         10.672
+## total_accel_dumbbell   9.739
+## accel_belt_z           9.677
+## accel_dumbbell_z       8.972
+## magnet_belt_z          7.800
+## magnet_forearm_z       7.740
+## magnet_belt_y          7.552
+## magnet_belt_x          5.978
+## roll_arm               5.854</code></pre>
+<pre class="r"><code>## wlc &lt;- classCenter(wktrain[, c(&quot;num_window&quot;, &quot;roll_belt&quot;)], wktrain$classe, modFit$finalModel$prox)
+## wlc &lt;- as.data.frame(wlc)
+## wlc$classe &lt;- rownames(wlc)
+## p &lt;- qplot(num_window, roll_belt, col = classe, data = wktrain)
+## p + geom_point(aes(x=num_window, y = roll_belt, col = classe, size = 5, shape = 4, data = wlc))</code></pre>
+</div>
+<div id="test-the-model" class="section level2">
+<h2>Test the model</h2>
+<p>Apply the predictive model on the test dataset, and the results match the real classification at 100% according to the submission part of the project. However, since the test dataset only contains 20 observations, this can’t really assess the out of sample error rate of this predictive model, which is estimated at 0.15%. It will require further assessment in the future study.</p>
 <pre class="r"><code>testing &lt;- testing[,filter]
 testing &lt;- testing[,5:59]
 pred &lt;- predict(modFit, testing)
 pred</code></pre>
-<pre><code>##  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
-##  B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B 
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
 </div>
 </div>
