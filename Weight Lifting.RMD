@@ -6,12 +6,17 @@ output: html_document
 ---
 # Summary
 
+Using devices such as *Jawbone Up*, *Nike FuelBand*, and *Fitbit* it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement, a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this study, I used the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They had been asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here][1] (see the section on the Weight Lifting Exercise Dataset). My goal of this project was to build a predictive model using this data, and accurately classify the actions into those 5 ways based on the data collected by accelerometers.
 
 # Analysis
 
 ## Load in the libraries
 
-```{r}
+In this study, I used the random forest machine learning algorithm included in the `randomForest` package to build the final predictive model. In order to improve the accuracy of the predictive model, I adopted the `caret` package, which will use bootstrap method in additional of cross validation. Since this machine learning algorithm requires a substantial amount of computing, I adopted the `doParallel` package to utilize the parallel processors for shorter running time.
+
+```{r Packages}
 if (!"caret" %in% (installed.packages())) {
         install.packages("caret")
 }
@@ -20,7 +25,7 @@ suppressMessages(library(caret))
 if (!"randomForest" %in% (installed.packages())) {
         install.packages("randomForest")
 }
-library(randomForest)
+suppressMessages(library(randomForest))
 
 if (!"doParallel" %in% (installed.packages())) {
         install.packages("doParallel")
@@ -30,7 +35,9 @@ suppressMessages(library(doParallel))
 
 ## Read the data
 
-Download the training dataset and testing dataset to the new data folder created in the working directory. Read in the data, and make sure all the variables in both the training set and testing set have the same classes.
+The data used in this study is provided from [this sourse][1]. The training data for this project are available [here][2], and the testing data are available [here][3]. Both data are also available under the data folder in [the repository of this project][4].
+
+Download the training dataset and testing dataset to a data folder created under the working directory. Read in the data, and make sure all the variables in both the training set and testing set have the same classes.
 
 ```{r Read, cache=TRUE}
 training <- read.csv("./data/pml-training.csv", na.strings = c("NA", ""))
@@ -42,19 +49,26 @@ levels(testing$new_window) <- c("no","yes")
 
 ## Prepare the data
 
-Some variables included in the dataset contains a great amount of NAs. Include them in our further analysis will skew our analysis, and could substantially prolong the running time of machine learning algorithm. I decided to throw out the variables that have more than 95% NA values.
+Some variables included in the dataset contains a great amount of missing values. Include them in our further analysis could potentially skew our analysis, and would substantially prolong the running time of machine learning algorithm. I decided to throw out the variables that have more than 95% values missing.
 
-```{r Clean, cache=TRUE}
+```{r Clean}
 naPercent <- apply(training, 2, function(x) sum(is.na(x))/length(x))
 filter <- naPercent < 0.95
 wktrain <- training[,filter]
+ntrain <- ncol(training)
+ncleaned <- sum(filter)
+x <- c(ntrain, ncleaned)
+names(x)<-c("Original", "Kept")
+barplot(x, main = "The Number of Variables Comparison", ylab = "Number of Variables")
 ```
+
+As showed in the above chart, this process filtered out `r ntrain-ncleaned` of `r ntrain` the original variables from the training data. `r ncleaned` useful variables had been kept for the further analysis.
 
 ## Methodology
 
 The objective of this study is build a predictive model to classify the weight lifting action by quality. Since this is more likely to be a nonlinear setting, decision tree methods would have better performance. In order to decrease the level of overfitting and increase accuracy, I decide to use random forest method in the caret package, which adopts the bootstraps and will automatically perform cross validation. 
 
-However, The random forest method in the caret package also requires a tremendous amount of running time on personal computers. In order to decrease the running time, I lower the number of trees generated each time from default value of 500 to 200, and I use the `doParallel` package to utilize the parallel processors. This calculation will also require a substantial memories, which may create problems in the reproducing process.
+However, The random forest method in the caret package also requires a tremendous amount of running time on personal computers. In order to decrease the running time, I lower the number of trees generated each time from default value of 500 to 300, and I use the `doParallel` package to utilize the parallel processors. This calculation will also require a substantial amount of memories, which may create problems in the reproducing process.
 
 The current training dataset includes the variables such as the user names and timestamps, which should have nothing to do with the action quality. In order to classify the quality levels using the measurable data, I excluded them from the predictors. For reproductive purpose, I set the seed at 525123.
 
@@ -73,23 +87,35 @@ modFit <- train(classe ~., data=wktrain, method="rf", ntree=300, proxy=T)
 modFit
 ```
 
+This is a summary of the random forest method in the `caret` package. The machine learning algorithm took 19622 samples and 54 predictors to build a predictive model for 5 classes. The process automatically resampled 25 times using bootstrap method, and chose the optimal model using the largest Accuracy value. The final model generated from this machine learning algorithm is the 28th model.
+
 ```{r}
 modFit$finalModel
+```
+
+Summarizing the final model, with a number of trees at 300, and a number of variables tried at each split at 28, the estimated out of sample error rate is 0.16%. It is worth mention that the process includes cross validation in estimate this out of sample error rate.
+
+```{r}
 head(getTree(modFit$finalModel,k=2))
 ```
 
+Considering the length issue, I won't display the whole final tree. This is only the top part of the final model, and if you are interested, you can modify the code to display the full tree.
+
 ```{r}
 varImp(modFit)
-## wlc <- classCenter(wktrain[, c("num_window", "roll_belt")], wktrain$classe, modFit$finalModel$prox)
-## wlc <- as.data.frame(wlc)
-## wlc$classe <- rownames(wlc)
-## p <- qplot(num_window, roll_belt, col = classe, data = wktrain)
-## p + geom_point(aes(x=num_window, y = roll_belt, col = classe, size = 5, shape = 4, data = wlc))
 ```
+
+Displaying the top 20 most important variables, the num window and roll belt variables have the highest importance.
+
+```{r}
+qplot(num_window, roll_belt, col = classe, data = wktrain, main = "Class by num_window and roll_belt")
+```
+
+Plot the observations by the top 2 important variables. It's clear to see the observations were grouped together by the classes, and have some distinctions among groups. However, the observations belong to certain classes have multiple clusters, which makes the random forest and other decision tree machine learning algorithm most suitable in dealing with this dataset.
 
 ## Test the model
 
-Apply the predictive model on the test dataset, and the results match the real classification at 100% according to the submission part of the project. However, since the test dataset only contains 20 observations, this can't really assess the out of sample error rate of this predictive model, which is estimated at 0.15%. It will require further assessment in the future studies.
+Apply the predictive model on the test dataset, and the results match the real classification at 100% according to the submission part of the project. However, since the test dataset only contains 20 observations, this can't really assess the out of sample error rate of this predictive model, which is estimated at 0.16%. It will require further assessment in the future studies.
 
 ```{r Test}
 testing <- testing[,filter]
@@ -99,3 +125,12 @@ pred
 ```
 
 # Conclusion
+
+The random forest machine learning algorithm provided a way to build extremely accurate predictive model for this project. The out of sample accuracy was estimated at 0.16% for the final model. And the final model correctly classified all observations in the test data. However, considering the small size of testing data, further validation on this model is required. Furthermore, the interpretability of random forest model is very poor, and this algorithm requires tremendous amount of computing, which could make it impractical in dealing with huge training dataset.
+
+
+
+[1]: http://groupware.les.inf.puc-rio.br/har
+[2]: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+[3]: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+[4]: https://github.com/liyisong1028/WeightLifting
